@@ -10,12 +10,22 @@ from zplib.image import mask
 from zplib.image import active_contour
 from zplib.curve import interpolate
 from zplib.curve import spline_geometry
-
+from zplib.curve import geometry
 
 
 def find_enpoints(skeleton):
     '''Use hit-and-miss tranforms to find the endpoints
-    of the skeleton
+    of the skeleton.
+
+    Parameters:
+    ------------
+    skeleton: array_like (cast to booleans) shape (n,m) 
+        Binary image of the skeleton of the worm mask
+
+    Returns:
+    -----------
+    endpoints: array_like (cast to booleans) shape (n,m)
+        Binary image of the endpoints determined by the hit_or_miss transform
     '''
 
     #structure 1 tells where we want a 1 to be found in the skel
@@ -68,12 +78,31 @@ def find_enpoints(skeleton):
              print(np.where(ep4))
              print("logical or")
              print(np.logical_or.reduce([ep1, ep2, ep3, ep4]).astype(int))"""
-    return np.logical_or.reduce([ep1, ep2, ep3, ep4, ep5, ep6, ep7, ep8])
+    endpoints = np.logical_or.reduce([ep1, ep2, ep3, ep4, ep5, ep6, ep7, ep8])
+    return endpoints
+
 
 def find_centerline(skeleton):
     '''Find the centerline of the worm from the skeleton
     Outputs both the centerline values (traceback and image to view)
     and the spline interpretation of the traceback
+
+    Parameters:
+    ------------
+    skeleton: array_like (cast to booleans) shape (n,m) 
+        Binary image of the skeleton of the worm mask
+
+    Returns:
+    -----------
+    center: array_like shape (n,m)
+        Binary image that indicates where the centerline is
+        (1.0 = centerline, 0.0 = not centerline)
+    traceback: list of 2-d tuples
+        List of indices associated with the centerline, starting with
+        one of the endpoints of the centerline and ending with the ending
+        index of the centerline. 
+    endpoints: array_like (cast to booleans) shape (n,m)
+        Binary image of the endpoints determined by the hit_or_miss transform
     '''
     #find enpoints
     endpoints = find_enpoints(skeleton)
@@ -106,16 +135,45 @@ def find_centerline(skeleton):
     #tck = generate_spline(traceback, 15)
     return center,traceback,endpoints
 
+
 def generate_centerline(traceback, shape):
-    '''Generate a picture with the centerline defined
+    '''Generate a picture with the centerline defined.
+    Makes it easier to view the centerline on RisWidget.
+    
+     Parameters:
+    ------------
+    traceback: list of 2-d tuples
+        List of indices associated with the centerline, starting with
+        one of the endpoints of the centerline and ending with the ending
+        index of the centerline. 
+    shape: tuple shape (n,m)
+        Shape of the image you want the centerline to be generated on.
+
+    Returns:
+    -----------
+    img: array_like shape (n,m)
+        Binary image that indicates where the centerline is
+        (1.0 = centerline, 0.0 = not centerline)
+    
     '''
     img = np.zeros(shape)
     #x, y = zip(*traceback)
     img[list(np.transpose(traceback))]=1
     return img
 
+
 def clean_mask(img):
     '''Clean spurious edges/unwanted things from the masks 
+    
+    Parameters:
+    ------------
+    img: array_like (cast to booleans) shape (n,m) 
+        Binary image of the worm mask
+
+    Returns:
+    -----------
+    mask: array_like (cast to booleans) shape (n,m) 
+        Binary image of the worm mask without spurious edges
     '''
     #clean up holes in the mask
     img = mask.fill_small_radius_holes(img, 2)
@@ -127,11 +185,27 @@ def clean_mask(img):
     curve_morph.smooth(iters=2)
     return mask.get_largest_object(curve_morph.mask)
 
-def generate_splines(traceback, distances, smoothing=None):
-    '''generate the width and centerline splines
-    NOTE: we will extrapolate the first/last few pixels to get the full length of the worm,
-    since medial axis transforms/skeltons don't always go to the edge of the mask
+
+def center_spline(traceback, distances, smoothing=None):
+    '''Generate spline corresponding to the centerline of the worm
+    
+    Parameters:
+    ------------
+    traceback: list of 2-d tuples
+        List of indices associated with the centerline, starting with
+        one of the endpoints of the centerline and ending with the ending
+        index of the centerline. 
+    distances: ndarray shape(n,m)
+        Distance transform from the medial axis transform of the worm mask
+
+    Returns:
+    -----------
+    tck: parametric spline tuple
+        spline tuple (see documentation for zplib.interpolate for more info)
     '''
+
+    #NOTE: we will extrapolate the first/last few pixels to get the full length of the worm,
+    #since medial axis transforms/skeltons don't always go to the edge of the mask
     #get the x,y positions for the centerline that can be
     #inputted into the fit spline function
     #NOTE: need to use traceback since order matters for spline creation
@@ -155,8 +229,23 @@ def generate_splines(traceback, distances, smoothing=None):
     tck = interpolate.fit_spline(new_points, smoothing=smoothing)
     return tck
 
+
 def width_spline(traceback, distances, smoothing=None):
-    '''Calculate a spline for the widths
+    '''Generate a nonparametric spline of the widths along the worm centerline
+
+    Parameters:
+    ------------
+    traceback: list of 2-d tuples
+        List of indices associated with the centerline, starting with
+        one of the endpoints of the centerline and ending with the ending
+        index of the centerline. 
+    distances: ndarray shape(n,m)
+        Distance transform from the medial axis transform of the worm mask
+
+    Returns:
+    -----------
+    tck: nonparametric spline tuple
+        spline tuple (see documentation for zplib.interpolate for more info)
     '''
     widths = distances[list(np.transpose(traceback))]
     #print(widths[0])
@@ -176,9 +265,147 @@ def width_spline(traceback, distances, smoothing=None):
     tck = interpolate.fit_nonparametric_spline(x_vals, new_widths, smoothing=smoothing)
     return tck
 
+
+def generate_centerline_from_points(points, skeleton):
+    '''Generate a traceback of the centerline from a list of points
+    along the skeleton that you want the centerline to go through
+    
+    Parameters:
+    ------------
+    points: list of 2-d tuples
+        List of indices that the centerline will go through. 
+        Indices must be given in the order that the centerline should 
+        encounter each point
+    skeleton: array_like (cast to booleans) shape (n,m) 
+        Binary image of the skeleton of the worm mask
+
+    Returns:
+    -----------
+    traceback: list of 2-d tuples
+        List of indices associated with the centerline, starting with
+        one of the endpoints of the centerline and ending with the ending
+        index of the centerline. 
+    '''
+    skel_path = np.transpose(np.where(skeleton))
+    skeleton = skeleton.astype(float)
+    skeleton[skeleton==0]=np.inf
+    #create mcp object
+    mcp = skg.MCP(skeleton)
+    traceback=[]
+    for i in range(0, len(points)-1):
+        start = points[i]
+        end = points[i+1]
+        print("start: ",start," end: ", end)
+        #print(skeleton[start])
+        print(skeleton[end])
+        if np.all(np.isinf(skeleton[points[i]])):
+            #print("start not in skeleton")
+            start = geometry.closest_point(start, skel_path)[1]
+        if np.all(np.isinf(skeleton[end])):
+            #print("end: ", end)
+            end = geometry.closest_point(end, skel_path)[1]
+
+        
+        costs = mcp.find_costs([start], [end])
+        tb = mcp.traceback(end)
+        traceback.extend(tb[:-1])
+
+    return traceback
+
+
+def generate_splines_from_points(points, mask):
+    '''Generate centerline spline and width splines along
+    a route of points you want the splines/centerlines to go through
+    
+    Parameters:
+    ------------
+    points: list of 2-d tuples
+        List of indices that the centerline will go through. 
+        Indices must be given in the order that the centerline should 
+        encounter each point
+    mask: array_like (cast to booleans) shape (n,m) 
+        Binary image of the worm mask
+
+    Returns:
+    -----------
+    center_tck: parametric spline tuple
+        spline tuple for spline corresponding to the centerline 
+    width_tck: nonparametric spline tuple
+        spline tuple corresponding to the widths along the
+        centerline of the worm
+    '''
+
+    traceback, distances = generate_center_med_axis_from_points(points, mask)
+    center_tck = center_spline(traceback, distances)
+    width_tck = width_spline(traceback, distances)
+
+    return center_tck, width_tck
+
+def generate_center_med_axis_from_points(points, mask):
+    '''Generate medial axis transform for a centerline
+        from a list of points that the centerline will go through.
+        This is used to generate all the widths along a particular centerline
+    
+    Parameters:
+    ------------
+    points: list of 2-d tuples
+        List of indices that the centerline will go through. 
+        Indices must be given in the order that the centerline should 
+        encounter each point
+    mask: array_like (cast to booleans) shape (n,m) 
+        Binary image of the worm mask
+
+    Returns:
+    -----------
+    traceback: list of 2-d tuples
+        List of indices associated with the centerline, starting with
+        one of the endpoints of the centerline and ending with the ending
+        index of the centerline. 
+    distances: ndarray shape(n,m)
+        Distance transform from the medial axis transform of the worm mask
+    '''
+    skeleton, med_axis = medial_axis(mask, return_distance=True)
+    traceback = generate_centerline_from_points(points, skeleton)
+    centerline = generate_centerline(traceback, mask.shape)
+    distances = centerline*med_axis
+
+    return traceback, distances
+
+
+def update_splines(traceback, mask):
+    '''Generate center_tck and width_tck from a new traceback
+
+    Parameters:
+    ------------
+    traceback: list of 2-d tuples
+        List of indices associated with the centerline, starting with
+        one of the endpoints of the centerline and ending with the ending
+        index of the centerline. 
+    mask: array_like (cast to booleans) shape (n,m) 
+        Binary image of the worm mask
+
+    Returns:
+    -----------
+    center_tck: parametric spline tuple
+        spline tuple for spline corresponding to the centerline 
+    width_tck: nonparametric spline tuple
+        spline tuple corresponding to the widths along the
+        centerline of the worm
+    '''
+    skeleton, med_axis = medial_axis(mask, return_distance=True)
+    centerline = generate_centerline(traceback, mask.shape)
+    distances = centerline*med_axis
+    center_tck = center_spline(traceback, distances)
+    width_tck = width_spline(traceback, distances)
+
+    return center_tck, width_tck
+
+
 def extrapolate_head(tck, width_tck, smoothing=None):
     '''Since the width/length splines don't get to the end of the worm,
     try to extrapolate the widths and such to the end of the worm mask
+
+    NOTE: Not really used in the spline-fitting pipeline
     '''
     #get first and last points from the width_tck
     width_ends = interpolate.spline_interpolate(width_tck, 2)
@@ -207,8 +434,33 @@ def extrapolate_head(tck, width_tck, smoothing=None):
     return new_tck, new_width_tck
 
 def skel_and_centerline(img):
-    '''generate the skeleton and find the centerline
-    img = array
+    '''Generate a skeleton and centerline from an image.
+    Main function in the spline-fitting pipeline.
+
+    Parameters:
+    ------------
+    img: array_like (cast to booleans) shape (n,m) 
+        Binary image of the worm mask
+
+    Returns:
+    -----------
+    mask: array_like (cast to booleans) shape (n,m) 
+        Binary image of the worm mask 
+    skeleton: array_like (cast to booleans) shape (n,m) 
+        Binary image of the skeleton of the worm mask
+    centerline: array_like shape (n,m)
+        Binary image that indicates where the centerline is
+        (1.0 = centerline, 0.0 = not centerline)
+    center_dist: ndarray shape(n,m)
+        Distance transform from the medial axis transform of the centerline
+    medial_axis: ndarray shape(n,m)
+        Distance transform from the medial axis transform of the worm mask
+    traceback: list of 2-d tuples
+        List of indices associated with the centerline, starting with
+        one of the endpoints of the centerline and ending with the ending
+        index of the centerline. 
+
+    TODO: limit the number of things that are returned to be the most important
     '''
     #need to make sure image only has 0 and 1
     #for the raw mask images, we will need to divide img by 255
@@ -222,16 +474,31 @@ def skel_and_centerline(img):
     #worm = mask.get_largest_object(erode)
     mask = clean_mask(img)
     #mask = img
-    skeleton, distance = medial_axis(mask, return_distance=True)
+    skeleton, med_axis = medial_axis(mask, return_distance=True)
     #med_axis = distance*skeleton
     #skeleton = skeletonize(mask)
     #find centerline
     centerline, traceback, endpoints = find_centerline(skeleton)
-    distance = centerline*distance
-    return mask, skeleton, centerline, distance, traceback, endpoints
+    center_dist = centerline*med_axis
+    return mask, skeleton, centerline, center_dist, med_axis, traceback
 
 def plot_spline(rw, tck, rgba):
-    '''plot the spline on RisWidget
+    '''Plot the spline on RisWidget
+
+    Parameters:
+    ------------
+    rw: RisWidget Object
+        Reference to the RisWidget object you want to display
+        the spline on
+    tck: parametric spline tuple
+        Spline tuple to plot
+    rgba: 3-d tuple of ints
+        RGBA values to color the spline
+
+    Returns:
+    -----------
+    display_path: QGraphicsPathItem
+        Reference to the display item displaying the spline
     '''
     bezier_elements = interpolate.spline_to_bezier(tck)
     path = Qt.QPainterPath()
@@ -246,7 +513,24 @@ def plot_spline(rw, tck, rgba):
     return display_path
 
 def plot_polygon(rw, tck, width_tck, rgba):
-    '''plot the full polygon on RisWidget
+    '''Plot the full polygon on RisWidget
+    
+    Parameters:
+    ------------
+    rw: RisWidget Object
+        Reference to the RisWidget object you want to display
+        the spline on
+    tck: parametric spline tuple
+        Spline tuple of the centerline to plot
+    width_tck: nonparametric spline tuple
+        Spline tuple of the widths along the centerline to plot
+    rgba: 3-d tuple of ints
+        RGBA values to color the spline
+
+    Returns:
+    -----------
+    display_path: QGraphicsPathItem
+        Reference to the display item displaying the spline
     '''
     left, right, outline = spline_geometry.outline(tck, width_tck)
     #print(left)
@@ -263,10 +547,47 @@ def plot_polygon(rw, tck, width_tck, rgba):
     display_path.setBrush(pen)
     return display_path
 
+def update_spline_from_points_in_rw(rw, points):
+    '''update the spline data and such for the current flipbook page
+    Nice way to update things when looking at the splines
+
+    Parameters:
+    ------------
+    rw: RisWidget Object
+        Reference to the RisWidget object you want to display
+        the spline on
+    points: list of 2-d tuples
+        List of indices that the centerline will go through. 
+        Indices must be given in the order that the centerline should 
+        encounter each point 
+
+    Returns:
+    -----------
+    '''
+    current_idx = rw.flipbook.current_page_idx
+    mask = rw.flipbook.pages[current_idx][1].data
+
+    traceback, distances = generate_center_med_axis_from_points(points, mask)
+    #update stuff in risWidget
+    rw.flipbook.pages[current_idx].spline_data = traceback
+    rw.flipbook.pages[current_idx].dist_data = distances
+
 def remove_spline(rw, display_path):
-    '''remove the spline currently displayed on RisWidget
+    '''Remove the spline displayed using the display_path on RisWidget
+
+    Parameters:
+    ------------
+    rw: RisWidget Object
+        Reference to the RisWidget object you want to display
+        the spline on
+    display_path: QGraphicsPathItem
+        Reference to the display item displaying the spline
+
+    Returns:
+    -----------
     '''
     rw.image_scene.removeItem(display_path)
+
 
 class Spline_View:
     '''Class uses for looking at many splines at once
@@ -283,6 +604,8 @@ class Spline_View:
         self.flipbook.page_changed.disconnect(self.page_changed)
 
     def page_changed(self, flipbook):
+        '''Displays spline/ploygon on the current flipbook page
+        '''
         #print(self.flipbook.current_page_idx)
         current_idx = self.flipbook.current_page_idx
         if self.display_path is not None:
@@ -293,7 +616,8 @@ class Spline_View:
         traceback = self.flipbook.pages[current_idx].spline_data
         dist = self.flipbook.pages[current_idx].dist_data
         print("worm length: ",len(traceback))
-        tck = generate_splines(traceback, dist)
+        tck = center_spline(traceback, dist)
+        print("tck length:",len(tck))
         width_tck = width_spline(traceback, dist)
 
         #new_tck, new_width_tck = extrapolate_head(tck, width_tck)
