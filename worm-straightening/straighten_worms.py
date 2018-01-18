@@ -1,14 +1,16 @@
 import pathlib
 import pickle
 import numpy as np
+from scipy import ndimage
 
 import freeimage
 from zplib.curve import spline_geometry
 from zplib.curve import interpolate
 from zplib.image import resample
 from PyQt5 import Qt, QtGui
-from ris_widget.ris_widget import RisWidget
+from ris_widget import ris_widget
 import skeleton
+import spline_editor
 
 
 def warp_image(spine_tck, width_tck, image, warp_file):
@@ -21,7 +23,7 @@ def warp_image(spine_tck, width_tck, image, warp_file):
     #warped = resample.sample_image_along_spline(image, spine_tck, warp_width)
     mask = resample.make_mask_for_sampled_spline(warped.shape[0], warped.shape[1], width_tck)
     warped[~mask] = 0
-    print("writing unit worm to :"+str(warp_file))
+    print("writing warped worm to :"+str(warp_file))
     freeimage.write(warped, warp_file) # freeimage convention: image.shape = (W, H). So take transpose.
 
 def get_bf_image(image_file, matt=False):
@@ -95,6 +97,44 @@ def straighten_worms_from_rw(rw, warp_path):
     warp_image(tck, width_tck, crop_img, warp_dir.joinpath(warp_name))
 
 
+def load_imgs(rw, img_dir):
+    '''Load images/masks into RisWidget in a way that 
+    can be efficiently used to warp worms/find splines
+
+    Parameters:
+    ------------
+    
+    Returns:
+    -----------
+    '''
+    img_dir = pathlib.Path(img_dir)
+
+    #load in masks/images
+    #Note images will be cropped to be close to the mask
+    for i in list(img_dir.glob("*mask.png")):
+        im=freeimage.read(i)
+        im=im>0
+        sx, sy=ndimage.find_objects(im)[0]
+        x = slice(max(0, sx.start-50),min(im.shape[0], sx.stop+50))
+        y = slice(max(0, sy.start-50),min(im.shape[1], sy.stop+50))
+        img = im[x,y]
+        bf = freeimage.read(get_bf_image(i))
+        crop_img = bf[x,y]
+        m, skel, centerline, center_dist, med_axis, tb =skeleton.skel_and_centerline(img)
+        #rw.flipbook_pages.append([img, m, skel, centerline, center_dist])
+        rw.flipbook_pages.append([crop_img,img, m, skel, centerline, center_dist])
+        rw.flipbook_pages[-1].spline_data = tb
+        rw.flipbook_pages[-1].dist_data = center_dist
+        rw.flipbook_pages[-1].img_path = [i, sx, sy]
+        rw.flipbook_pages[-1].med_axis = med_axis
+
+    #Add all the fancy buttons and stuff to risWidget
+    spline_view = skeleton.Spline_View(rw)
+    spline_edit = spline_editor.Spline_Editor(rw)
+    ok = ris_widget.dock_widgets.annotator.BoolField('warp OK', default=True)
+    fields = [ok]
+    annotator = ris_widget.dock_widgets.Annotator(rw, fields)
+    #warp_worm = WarpWorm(rw)
 
 
 class WarpWorm:
@@ -102,7 +142,7 @@ class WarpWorm:
     '''
     def __init__(self, rw):
         self.rw = rw
-        self.rw_warp = RisWidget()
+        self.rw_warp = ris_widget.RisWidget()
         self.layout = Qt.QFormLayout()
         spline_widget = Qt.QWidget()
         spline_widget.setLayout(self.layout)

@@ -433,6 +433,7 @@ def extrapolate_head(tck, width_tck, smoothing=None):
     new_width_tck = interpolate.fit_nonparametric_spline(new_xs, new_widths, smoothing=smoothing)
     return new_tck, new_width_tck
 
+
 def skel_and_centerline(img):
     '''Generate a skeleton and centerline from an image.
     Main function in the spline-fitting pipeline.
