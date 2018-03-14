@@ -70,10 +70,10 @@ def load_worm_from_spline(rw, spline_path, img_dir, keyword='*bf.png'):
     img_dir = pathlib.Path(img_dir)
 
     #annotations to be used for the spline_view/spline_editor
-    annotations = [{'tck':(ctck, wtck)} for ctck, wtck in tck_dict.values()]
+    annotations = [{'tck':(ctck, wtck)} for _,ctck, wtck in sorted(tck_dict.values())]
     #annotations = [{'centerline':ctck, 'widths':wtck} for ctck, wtck in tck_dict.values()]
     #print(annotations)
-    for timepoint in tck_dict.keys():
+    for timepoint in sorted(tck_dict.keys()):
         img_path = list(img_dir.glob(timepoint+keyword))
         #print(str(img_path))
         rw.add_image_files_to_flipbook(img_path)
@@ -198,11 +198,12 @@ class SplineLoad:
     def load_worm_from_spline(self, spline_path, img_dir, keyword='*bf.png'):
         '''Load worms and their splines
         '''
+        
         tck_dict = pickle.load(open(spline_path, 'rb'))
         img_dir = pathlib.Path(img_dir)
 
         #annotations to be used for the spline_view/spline_editor
-        annotations = [{'tck':(ctck, wtck)} for ctck, wtck in tck_dict.values()]
+        annotations = [{'tck':tck} for tp, tck in sorted(tck_dict.items())]
         #annotations = [{'centerline':ctck, 'widths':wtck} for ctck, wtck in tck_dict.values()]
         #print(annotations)
         for timepoint in sorted(tck_dict.keys()):
@@ -616,8 +617,8 @@ class SplineEdit(free_spline.FreeSpline):
 
     def _view_spline(self):   
         center_tck = self._tck
-        #old_width_tck = self._width_tck
         old_width_tck = self._width_tck
+        #width_tck = self._width_tck
         width_tck=self._smooth_width_from_pca(old_width_tck)
         #TODO: add in the pca smoothing for funsies
         #width_tck=smooth_width_from_pca(old_width_tck, self.pca_stuff)
