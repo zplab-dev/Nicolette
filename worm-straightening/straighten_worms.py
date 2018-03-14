@@ -7,6 +7,7 @@ import freeimage
 from zplib.curve import spline_geometry
 from zplib.curve import interpolate
 from zplib.image import resample
+from zplib.image import colorize
 from PyQt5 import Qt, QtGui
 from ris_widget import ris_widget
 import skeleton
@@ -22,8 +23,11 @@ def warp_image(spine_tck, width_tck, image, warp_file):
     warped = resample.warp_image_to_standard_width(image, spine_tck, width_tck, width_tck, 730)
     #warped = resample.sample_image_along_spline(image, spine_tck, warp_width)
     mask = resample.make_mask_for_sampled_spline(warped.shape[0], warped.shape[1], width_tck)
-    warped[~mask] = 0
+    warped = colorize.scale(warped).astype('uint8')
+    warped[~mask] = 255
+
     print("writing warped worm to :"+str(warp_file))
+    #return warped
     freeimage.write(warped, warp_file) # freeimage convention: image.shape = (W, H). So take transpose.
 
 def get_bf_image(image_file, matt=False):

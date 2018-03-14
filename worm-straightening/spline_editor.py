@@ -11,6 +11,8 @@ from zplib.image import active_contour
 from zplib.curve import interpolate
 from zplib.curve import spline_geometry
 import skeleton
+import straighten_worms
+import _pickle as pickle
 
 class Spline_Editor:
 
@@ -57,8 +59,10 @@ class Spline_Editor:
         '''Once the save edits button is pressed
         save the new spline
         '''
+        print(self.points)
         skeleton.update_spline_from_points_in_rw(self.rw, self.points)
         self.points = []
+        print(self.points)
         self.editing = False
         self.edit.setText('Edit Spline Points')
         self.clear.setVisible(False)
@@ -71,4 +75,42 @@ class Spline_Editor:
         print("clicked point: ",x,y)
         self.points.append((int(x),int(y)))
         print(self.points)
-        
+
+
+def save_splines_from_rw(rw, output_dir):
+    '''When splines are nicely edited in RisWidget, save them to a pickle file
+    '''
+    warped_dir = pathlib.Path(output_dir)
+    spline_dict = {}
+    worm_id = None
+
+    for i in range(len(rw.flipbook.pages)):
+        #current_idx = rw.flipbook.current_page_idx
+
+        img, sx, sy = rw.flipbook.pages[i].img_path
+        traceback = rw.flipbook.pages[i].spline_data
+        dist = rw.flipbook.pages[i].dist_data
+        #print("worm length: ",len(traceback))
+        tck = skeleton.center_spline(traceback, dist)
+        #print("tck length: ",len(tck))
+        width_tck = skeleton.width_spline(traceback, dist)
+        #need to adjust center tck to give us the correct x,y points in the bf
+        tck[1].T[0]+=max(0, sx.start-50)
+        tck[1].T[1]+=max(0, sy.start-50)
+
+        #save tck's to a dict
+        spline_dict[img] = (tck, width_tck)
+        worm_id = img.parent.name
+        '''
+        bf_img_file = straighten_worms.get_bf_image(img)
+        bf_img = freeimage.read(bf_img_file)
+
+        warped_img_path = warped_dir.joinpath(bf_img_file.stem.split(" ")[0] + "_warped.png")
+        img_name = bf_img_file.stem + "_warped.png"
+        straighten_worms.warp_image(tck, width_tck, bf_img, warped_img_path)'''
+
+    #save spline_dict out
+    output_name = warped_dir.joinpath(worm_id+'_tck.p')
+    print("Pickling spline_dict and saving to: " + str(output_name))
+
+    pickle.dump(spline_dict, open(output_name, 'wb'))

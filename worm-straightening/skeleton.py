@@ -128,7 +128,7 @@ def find_centerline(skeleton):
             index=(i, dist.argmax())
         
 
-    print(index)
+    #print(index)
     print("length: "+str(len(traceback)))
     #center=[]
     center=generate_centerline(traceback, skeleton.shape)
@@ -297,7 +297,7 @@ def generate_centerline_from_points(points, skeleton):
         end = points[i+1]
         print("start: ",start," end: ", end)
         #print(skeleton[start])
-        print(skeleton[end])
+        #print(skeleton[end])
         if np.all(np.isinf(skeleton[points[i]])):
             #print("start not in skeleton")
             start = geometry.closest_point(start, skel_path)[1]
@@ -629,9 +629,10 @@ class Spline_View:
 
     def view_spline(self, flipbook):
         current_idx = self.flipbook.current_page_idx
+
         traceback = self.flipbook.pages[current_idx].spline_data
         dist = self.flipbook.pages[current_idx].dist_data
-        print("worm length: ",len(traceback))
+        #print("worm length: ",len(traceback))
         tck = center_spline(traceback, dist)
         #print("tck length:",len(tck))
         width_tck = width_spline(traceback, dist)

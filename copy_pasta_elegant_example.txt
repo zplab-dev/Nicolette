@@ -1,0 +1,9 @@
+from elegant import worm_data
+worms = worm_data.read_worms('/mnt/data/20170919_lin-04_GFP_spe-9/007.tsv')
+worm_007 = worms[0]
+import spline_generator
+features_to_add = spline_generator.get_gfp_exp_measurements('/mnt/data/20170919_lin-04_GFP_spe-9/work_dir/20170919_lin-04_GFP_spe-9 007/warp_worms_corrected', '/mnt/data/20170919_lin-04_GFP_spe-9/work_dir/spline_test/spline_test_tck.p', worm_007)
+
+worms.write_timecourse_data('/mnt/data/20170919_lin-04_GFP_spe-9/work_dir/elegant_test/multi_worm_test.tsv', multi_worm_file=True)
+warped_integrated_gfp = worm.get_time_range('warped_integrated_gfp',min_age=72, max_age=168)
+holly_integrated_gfp = worm.get_time_range('integrated_gfp', min_age=72, max_age=168)
