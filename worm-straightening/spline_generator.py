@@ -337,6 +337,30 @@ def width_spline(traceback, distances, smoothing=None):
     tck = interpolate.fit_nonparametric_spline(x_vals, new_widths, smoothing=smoothing)
     return tck
 
+def generate_splines_from_mask(img_path):
+    '''Gerate centerline and width splines from a mask image
+    '''
+    img = freeimage.read(img_path)
+    img=img>0
+    #crop image for easier/faster spline finding
+    sx, sy=ndimage.find_objects(img)[0]
+    x = slice(sx.start,sx.stop)
+    y = slice(sy.start,sy.stop)
+    crop_img = img[x,y]
+
+    #generate splines
+    traceback, medial_axis = skel_and_centerline(crop_img)
+    if len(traceback)>0:
+        center_tck = center_spline(traceback, medial_axis)
+        width_tck = width_spline(traceback, medial_axis)
+        #make spline in the same area as the original bf image
+        center_tck[1].T[0]+=(sx.start)
+        center_tck[1].T[1]+=(sy.start)
+    else:
+        center_tck = None
+        width_tck = None
+
+    return (center_tck, width_tck)
 
 def generate_splines(mask_dir, export_dir):
     '''Use a directory of masks to generate splines from to 
@@ -358,31 +382,31 @@ def generate_splines(mask_dir, export_dir):
         export_path.mkdir(parents=False)
 
     for img_path in list(mask_dir.glob("*mask.png")):
-        #load in images
-        img = freeimage.read(img_path)
-        img=img>0
-        #crop image for easier/faster spline finding
-        sx, sy=ndimage.find_objects(img)[0]
-        x = slice(sx.start,sx.stop)
-        y = slice(sy.start,sy.stop)
-        crop_img = img[x,y]
+        """#load in images
+                                img = freeimage.read(img_path)
+                                img=img>0
+                                #crop image for easier/faster spline finding
+                                sx, sy=ndimage.find_objects(img)[0]
+                                x = slice(sx.start,sx.stop)
+                                y = slice(sy.start,sy.stop)
+                                crop_img = img[x,y]"""
 
         timepoint = img_path.stem.split(' ')[0]
 
         #generate splines
-        traceback, medial_axis = skel_and_centerline(crop_img)
-        if len(traceback)>0:
-            center_tck = center_spline(traceback, medial_axis)
-            width_tck = width_spline(traceback, medial_axis)
-            #make spline in the same area as the original bf image
-            center_tck[1].T[0]+=(sx.start)
-            center_tck[1].T[1]+=(sy.start)
-        else:
-            center_tck = None
-            width_tck = None
+        """traceback, medial_axis = skel_and_centerline(crop_img)
+                                if len(traceback)>0:
+                                    center_tck = center_spline(traceback, medial_axis)
+                                    width_tck = width_spline(traceback, medial_axis)
+                                    #make spline in the same area as the original bf image
+                                    center_tck[1].T[0]+=(sx.start)
+                                    center_tck[1].T[1]+=(sy.start)
+                                else:
+                                    center_tck = None
+                                    width_tck = None"""
 
         #add to spline_dict
-        spline_dict[timepoint] = (center_tck, width_tck)
+        spline_dict[timepoint] = generate_splines_from_mask(img_path)
 
     #save spline_dict out
     output_name = str(export_dir)+"/"+mask_dir.name + "_tck.p"
