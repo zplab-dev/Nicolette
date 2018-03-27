@@ -46,6 +46,11 @@ from ris_widget.overlay import free_spline
         rw.flipbook_pages[-1].med_axis = med_axis
         rw.flipbook_pages[-1].name = str(i)"""
 
+def annotations(spline_path):
+    tck_dict = pickle.load(open(spline_path, 'rb'))
+    annotations = [{'pose':tcks} for _,tcks in sorted(tck_dict.items())]
+    return annotations
+
 def load_splines(rw, spline_dict, mask_dir, keyword = '*mask.png'):
     '''Load the worms and their splines
     '''
@@ -70,7 +75,7 @@ def load_worm_from_spline(rw, spline_path, img_dir, keyword='*bf.png'):
     img_dir = pathlib.Path(img_dir)
 
     #annotations to be used for the spline_view/spline_editor
-    annotations = [{'tck':(ctck, wtck)} for _,ctck, wtck in sorted(tck_dict.values())]
+    annotations = [{'pose':tcks} for _,tcks in sorted(tck_dict.items())]
     #annotations = [{'centerline':ctck, 'widths':wtck} for ctck, wtck in tck_dict.values()]
     #print(annotations)
     for timepoint in sorted(tck_dict.keys()):
@@ -153,7 +158,7 @@ class SplineLoad:
     save them out to the same spline_path. This will be used when trying to edit
     splines and save them for later
     '''
-    def __init__(self, rw, spline_dir, work_dir):
+    def __init__(self, rw, spline_dir, work_dir, name='pose'):
         '''spline_dir is the directory where all the tck dictionaries are saved
         work_dir is the working directory where all the masks/images should be
         NOTE: the code is built on the assumptions that they are in the format provided
@@ -166,6 +171,7 @@ class SplineLoad:
         self.current_worm_idx = 0
         self.subdir = list(self.work_dir.glob('*'))
         self.actions = []
+        self.name = name
         
         self._add_action('prev', Qt.Qt.Key_BracketLeft, lambda: self.load_next_worm(-1))
         self._add_action('next', Qt.Qt.Key_BracketRight, lambda: self.load_next_worm(1))
@@ -201,15 +207,18 @@ class SplineLoad:
         
         tck_dict = pickle.load(open(spline_path, 'rb'))
         img_dir = pathlib.Path(img_dir)
+        #print(img_dir)
 
         #annotations to be used for the spline_view/spline_editor
-        annotations = [{'tck':tck} for tp, tck in sorted(tck_dict.items())]
+        annotations = [{self.name:tck} for tp, tck in sorted(tck_dict.items())]
         #annotations = [{'centerline':ctck, 'widths':wtck} for ctck, wtck in tck_dict.values()]
         #print(annotations)
-        for timepoint in sorted(tck_dict.keys()):
-            img_path = list(img_dir.glob(timepoint+keyword))
+        self.rw.flipbook.add_image_files(str(img_dir.joinpath(keyword)))
+
+        #for timepoint in sorted(tck_dict.keys()):
+        #    img_path = list(img_dir.glob(timepoint+keyword))
             #print(str(img_path))
-            self.rw.add_image_files_to_flipbook(img_path)
+        #    self.rw.add_image_files_to_flipbook(img_path)
 
         return annotations
 
