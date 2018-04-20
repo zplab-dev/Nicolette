@@ -71,7 +71,11 @@ class SplineAnnotator:
 
         with open(export_file, 'wb') as save_file: pickle.dump(spline_dict, save_file)
         save_file.close()
+   
 
+
+
+   
 
 class SplineLoad:
     '''Class that can be used to load splines into ris_widget and then
