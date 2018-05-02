@@ -4,18 +4,24 @@ import numpy as np
 import scipy
 import pickle
 import collections
+from functools import partial
 from zplib.image import resample
 from elegant import worm_data
 from zplib.scalar_stats import mcd
 
 
-def measure_gfp_fluorescence(fluorescent_image, worm_mask):
+def measure_gfp_fluorescence(fluorescent_image, worm_mask, measurement_name=None):
     """Measure specific GFP fluorescent things for a particular GFP image
     and return a dictionary of the measurements
 
     Parameters:
-        flourescent_image:
-        worm_mask:
+        flourescent_image: numpy array of the flourescent image
+        worm_mask: numpy array of the mask
+        measurement_name: string of the descriptor that you want the columns to have
+            i.e. if you were measuring gfp in the head then you might put measurement_name = 'head'
+            and then in the output your dictionary will have keys such as 'integrated_gfp_head' 
+            instead of 'integrated_gfp'. This makes it easier to input into elegant right away and
+            not overwrite any other previously made measurements
 
     Returns:
         gfp_measurements: dictionary of measurements and their values
@@ -42,16 +48,21 @@ def measure_gfp_fluorescence(fluorescent_image, worm_mask):
     expression_mask = (fluorescent_image > expression_thresh) & worm_mask
     high_expression_mask = (fluorescent_image > high_expression_thresh) & worm_mask
 
-    gfp_measurements = {'integrated_gfp_warp' : integrated,
-                        'median_gfp_warp' : median, 
-                        'percentile95_gfp_warp' : percentile95, 
-                        'expressionarea_gfp_warp' : expression_area, 
-                        'expressionareafraction_gfp_warp' : expression_area_fraction, 
-                        'expressionmean_gfp_warp' : expression_mean, 
-                        'highexpressionarea_gfp_warp' : high_expression_area, 
-                        'highexpressionareafraction_gfp_warp' : high_expression_area_fraction, 
-                        'highexpressionmean_gfp_warp' : high_expression_mean, 
-                        'highexpressionintegrated_gfp_warp' : high_expression_integrated}
+    gfp_measurements = {'integrated_gfp' : integrated,
+                        'median_gfp' : median, 
+                        'percentile95_gfp' : percentile95, 
+                        'expressionarea_gfp' : expression_area, 
+                        'expressionareafraction_gfp' : expression_area_fraction, 
+                        'expressionmean_gfp' : expression_mean, 
+                        'highexpressionarea_gfp' : high_expression_area, 
+                        'highexpressionareafraction_gfp' : high_expression_area_fraction, 
+                        'highexpressionmean_gfp' : high_expression_mean, 
+                        'highexpressionintegrated_gfp' : high_expression_integrated}
+
+    
+    if measurement_name is not None:
+        for key in sorted(gfp_measurements.keys()):
+            gfp_measurements[key+"_"+measurement_name] = gfp_measurements.pop(key)
 
     expression_area_mask = np.zeros(worm_mask.shape).astype('bool')
     high_expression_area_mask = np.zeros(worm_mask.shape).astype('bool')
@@ -99,8 +110,8 @@ def warp_image(tcks, image):
 
     Returns:
         Tuple containing (warped, mask)
-        warped: warped image of the worm
-        mask: mask of where the worm is in the image
+        warped: numpy array of the warped image of the worm
+        mask: numpy array of mask of where the worm is in the image
 
     """
     spine_tck, width_tck = tcks
@@ -115,8 +126,74 @@ def warp_image(tcks, image):
 
     return (warped, mask)
 
+def slice_worms(warp_image, mask, slices):
+    """ Measure only a section of the worm.
 
-def measure_experiment(expt_dir, positions, calibration_dir, super_vignette):
+    Parameters:
+        warp_image: numpy array with the image data for the warped worm
+        mask: numpy array of the warped worm mask 
+            NOTE: warp_image() gives the warp_image and the mask as a tuple
+        slice: tuple with the slice you want to take along the length of the worm.
+        The tuple will contain percentages of where you want to start and end
+            (i.e. if you wanted the first 10% of the worm you would use:
+                slice_worms(warp_image, mask, (0,10))
+
+    Returns:
+        Tuple of the slice of the warp_image and
+        slice of the mask in the form (image_slice, warp_slice)
+        
+        image_slice: numpy array of the sliced image of the warp_image
+
+        mask: numpy array of the sliced mask
+    """
+
+    length = warp_image.shape[0]
+    start_per, end_per = slices
+
+    start = start_per/100
+    end = end_per/100
+
+    #get the slices from the image
+    #Note: to get a percentage along the backbone we need to multiply
+    #the length by the start and end percentages
+    image_slice = warp_image[int(length*start):int(length*end),]
+    mask_slice = mask[int(length*start):int(length*end),]
+
+    return(image_slice, mask_slice)
+
+def measure_slices(flourescent_image, mask, slices={'head':(0,10) , 'anterior': (10,50), 'vulva':(50,60), 'posterior':(60,100)}):
+    """TODO make this more generalizable (i.e. instead of hardcoding in the regions
+    to analyze, make it so the user can specify where/what to measure either with functions
+    or specified slices)
+
+    Gets gfp measurements for many slices of worms. Right now it gets head 
+    (1st 10%, anterior half (10%-50%), vulva (50%-60%), posterior half (60%-100%)) and outputs
+    it as a dictionary.
+
+    Parameters:
+        flourescent_image: numpy array of the flourescent image
+        worm_mask: numpy array of the mask
+        measurement_name: dictionary of measurement descriptors mapping to the percentages
+            to measure for that slice
+
+    Returns:
+        slice_measurements: list of measurements
+
+            NOTE: currently slice_measurements has set things to look for, but maybe
+            in the future we can have this take functions to study.
+    """
+
+    slice_measurements = {}
+    for measure, slc in slices.items():
+        #print("measuring: ", measure)
+        image_slice, mask_slice = slice_worms(flourescent_image, mask, slc)
+        gfp = measure_gfp_fluorescence(image_slice, mask_slice, measurement_name=measure)
+        slice_measurements.update(gfp)
+
+    return slice_measurements
+
+
+def measure_worms_experiment(expt_dir, positions, calibration_dir, super_vignette, measurement_name=None, slices=None):
     """Given an experiment, measure GFP flourescence from warped worms for all worms in positions
     and return a dictionary of all the measurements for each timepoint for each worm
 
@@ -147,10 +224,61 @@ def measure_experiment(expt_dir, positions, calibration_dir, super_vignette):
     for worm, timepoints in positions.items():
         print("Measuring worm: " + worm)
         annotation_file = list(annotation_dir.glob('*'+worm+'.pickle'))[0]
-        _, annotations = pickle.load(open(annotation_file, 'rb'))
-        timepoint_measurements = collections.defaultdict(list)
-        for tp, images in timepoints.items():
+        timepoint_measurements = measure_worm(timepoints, calibration_dir, annotation_file, super_vignette, measurement_name=measurement_name, slices=slices)
+        """_, annotations = pickle.load(open(annotation_file, 'rb'))
+                                timepoint_measurements = collections.defaultdict(list)
+                                for tp, images in timepoints.items():
+                                    #normalize gfp image
+                                    raw_image = freeimage.read(images[0])
+                                    flatfield_image = freeimage.read(calibration_dir / (tp+" fl_flatfield.tiff"))
+                                    corrected_gfp = normalize_gfp_image(raw_image, super_vignette, flatfield_image)
+                                    #warp worm to unit worm
+                                    tcks = annotations[tp]['pose']
+                                    warped_image, mask = warp_image(tcks, corrected_gfp)
+                                    #get out gfp measurements
+                                    gfp_measurements = measure_gfp_fluorescence(warped_image, mask, measurement_name=measurement_name)
+                        
+                                    if slices is not None:
+                                        slice_measurements = measure_slices(warped_image, mask, slices=slices)
+                                        gfp_measurements.update(slice_measurements)
+                                    
+                                    for measurement, value in gfp_measurements.items():
+                                        timepoint_measurements[measurement].append(value)"""
+
+        #populate worm_measurements
+        worm_measurements[worm] = timepoint_measurements
+
+    return worm_measurements
+
+def measure_worm(timepoints, calibration_dir, annotation_file, super_vignette, measurement_name=None, slices=None):
+    """Measure gfp values for one worm. NOTE: this assumes the worms will be straightened to make the measurements/
+    generate the mask
+
+    Parameters:
+        timepoints: dictionary of the timepoints mapping to the images to measure
+        calibration_dir: path to the calibration folder where all the flatfield images are
+        annotation_file: path to the annotation file that goes with the worm (ie. 20170919_lin-04_GFP_spe-9 000.pickle)
+        super_vignette: binary array corresponding to the vignette of where the worm/food pad is
+    """
+    
+    _, annotations = pickle.load(open(annotation_file, 'rb'))
+    calibration_dir = pathlib.Path(calibration_dir)
+    all_timepoints = list(annotations.keys())
+    #since we want values for only a few timepoints, make an empty list the length of 
+    #all the timepoints and then we will input the values only in the places that make sense
+    def empty_timepoints():
+        """Since we want an empty numpy array for the timepoint_measurements,
+        we gotta do this weird function thingy.
+        """
+        retVal = np.empty(len(all_timepoints)) * np.nan
+        #print(retVal.shape)
+        return retVal
+
+    timepoint_measurements = collections.defaultdict(empty_timepoints)
+    
+    for tp, images in timepoints.items():
             #normalize gfp image
+            #print(images[0])
             raw_image = freeimage.read(images[0])
             flatfield_image = freeimage.read(calibration_dir / (tp+" fl_flatfield.tiff"))
             corrected_gfp = normalize_gfp_image(raw_image, super_vignette, flatfield_image)
@@ -158,15 +286,22 @@ def measure_experiment(expt_dir, positions, calibration_dir, super_vignette):
             tcks = annotations[tp]['pose']
             warped_image, mask = warp_image(tcks, corrected_gfp)
             #get out gfp measurements
-            gfp_measurements = measure_gfp_fluorescence(warped_image, mask)
+            gfp_measurements = measure_gfp_fluorescence(warped_image, mask, measurement_name=measurement_name)
+
+            if slices is not None:
+                slice_measurements = measure_slices(warped_image, mask, slices=slices)
+                gfp_measurements.update(slice_measurements)
             
             for measurement, value in gfp_measurements.items():
-                timepoint_measurements[measurement].append(value)
+                #need the index of where the timepoitn is
+                tp_index = all_timepoints.index(tp)
+                timepoint_measurements[measurement][tp_index] = value
 
-        #populate worm_measurements
-        worm_measurements[worm] = dict(timepoint_measurements)
+    
+    return dict(timepoint_measurements)
+    
 
-    return worm_measurements
+
 
 def add_gfp_to_elegant(worms, worm_measurements):
     """Add the gfp measurements from measure_experiment to elegant 
