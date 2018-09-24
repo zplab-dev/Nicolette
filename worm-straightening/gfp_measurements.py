@@ -47,6 +47,7 @@ def measure_gfp_fluorescence(fluorescent_image, worm_mask, measurement_name=None
     high_expression_integrated = high_fluo_px.sum()
     expression_mask = (fluorescent_image > expression_thresh) & worm_mask
     high_expression_mask = (fluorescent_image > high_expression_thresh) & worm_mask
+    length = worm_mask.shape[0]
 
     gfp_measurements = {'integrated_gfp' : integrated,
                         'median_gfp' : median, 
@@ -57,7 +58,9 @@ def measure_gfp_fluorescence(fluorescent_image, worm_mask, measurement_name=None
                         'highexpressionarea_gfp' : high_expression_area, 
                         'highexpressionareafraction_gfp' : high_expression_area_fraction, 
                         'highexpressionmean_gfp' : high_expression_mean, 
-                        'highexpressionintegrated_gfp' : high_expression_integrated}
+                        'highexpressionintegrated_gfp' : high_expression_integrated,
+                        'area' : area,
+                        'length' : length}
 
     
     if measurement_name is not None:
@@ -192,6 +195,40 @@ def measure_slices(flourescent_image, mask, slices={'head':(0,10) , 'anterior': 
 
     return slice_measurements
 
+def view_slices_experiment(expt_dir, positions, calibration_dir, super_vignette, rw, measurement_name=None, slices=None):
+    """Straighten a bunch of worms and then put them up on risWidget for QC
+    """
+    expt_dir = pathlib.Path(expt_dir)
+    annotation_dir = expt_dir / 'annotations'
+    calibration_dir = pathlib.Path(calibration_dir)
+    super_vignette = pickle.load(open(super_vignette, 'rb'))
+
+    worm_measurements = collections.OrderedDict()
+    #iterate through the worms
+
+    for worm, timepoints in positions.items():
+        print("Measuring worm: " + worm)
+        annotation_file = list(annotation_dir.glob('*'+worm+'.pickle'))[0]
+        _, annotations = pickle.load(open(annotation_file, 'rb'))
+        for tp, images in timepoints.items():
+            #normalize gfp image
+            raw_image = freeimage.read(images[0])
+            bf_image = freeimage.read(images[1])
+            flatfield_image = freeimage.read(calibration_dir / (tp+" fl_flatfield.tiff"))
+            corrected_gfp = normalize_gfp_image(raw_image, super_vignette, flatfield_image)
+            #warp worm to unit worm
+            tcks = annotations[tp]['pose']
+            warped_image, mask = warp_image(tcks, corrected_gfp)
+            warped_bf, mask = warp_image(tcks, bf_image)
+            if slices is not None:
+                for measure, slc in slices.items():
+                    #print("Measuring slice: "+measure)
+                    image_slice,mask_slice = slice_worms(warped_image, mask, slc)
+                    bf_slice, mask_slice = slice_worms(warped_bf, mask, slc)
+                    #print(image_slice, bf_slice)
+                    rw.flipbook_pages.append([image_slice, bf_slice, mask_slice])
+                    rw.flipbook_pages[-1].name = (worm+" "+tp+" "+measure)
+
 
 def measure_worms_experiment(expt_dir, positions, calibration_dir, super_vignette, measurement_name=None, slices=None):
     """Given an experiment, measure GFP flourescence from warped worms for all worms in positions
@@ -205,6 +242,11 @@ def measure_worms_experiment(expt_dir, positions, calibration_dir, super_vignett
                 Note: load_data.scan_experiment_dir() provides exactly this.
         calibration_dir: path to the flatfield calibration images for normalization
         super_vignette: path to the super_vignette pickle file Willie generated with his code
+        measurement_name: string of the descriptor that you want the columns to have
+            i.e. if you were measuring gfp in the head then you might put measurement_name = 'head'
+            and then in the output your dictionary will have keys such as 'integrated_gfp_head' 
+            instead of 'integrated_gfp'. This makes it easier to input into elegant right away and
+            not overwrite any other previously made measurements
 
     Returns:
         worm_measurements: ordered dictionary of position names (i.e. worm names) mapping
@@ -259,6 +301,11 @@ def measure_worm(timepoints, calibration_dir, annotation_file, super_vignette, m
         calibration_dir: path to the calibration folder where all the flatfield images are
         annotation_file: path to the annotation file that goes with the worm (ie. 20170919_lin-04_GFP_spe-9 000.pickle)
         super_vignette: binary array corresponding to the vignette of where the worm/food pad is
+        measurement_name: string of the descriptor that you want the columns to have
+            i.e. if you were measuring gfp in the head then you might put measurement_name = 'head'
+            and then in the output your dictionary will have keys such as 'integrated_gfp_head' 
+            instead of 'integrated_gfp'. This makes it easier to input into elegant right away and
+            not overwrite any other previously made measurements
     """
     
     _, annotations = pickle.load(open(annotation_file, 'rb'))

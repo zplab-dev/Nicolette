@@ -53,7 +53,7 @@ def plot(measurements, save_dir, features, days="all"):
     a few features
 
     Parameters:
-        measurements: tuple of measurements to plot (x,y)
+        measurements: tuple of list of measurements to plot (x,y)
             In general, this is (lifespan, gfp_measurement)
         save_dir: place to save the files
         features: names of the features you are trying to plot,
@@ -97,6 +97,72 @@ def plot(measurements, save_dir, features, days="all"):
     time.sleep(1)
     plt.close()
     plt.gcf().clf
+
+def plot_along_length(mean_dict, save_dir, xticks, title):
+    """Plot many things from a mean_dict with xticks as specific things
+    Plots both a scatter plot and a line plot of the data
+    NOTE: this function assumes that you are plotting gfp intensity
+    TODO: figure out what this is actually plotting/generalize it
+
+    Parameters:
+        mean_dict: dictionary mapping the name of the feature to a list of a mean value for that feature
+         for each worm
+         NOTE: grab_mean_features gives this
+
+        save_dir: path where to save the images
+        xticks: feature names in the order you want them to show up
+        title: title of the graph
+    """
+    xvals = range(0, len(list(mean_dict.keys())))
+    values = []
+    for x in xticks:
+        values.append(mean_dict[x])
+
+    values_array = np.array(values).T
+    #plot stuff
+    for i in range(0, len(values_array)):
+        plt.scatter(xvals, values_array[i])
+    
+    plt.xticks(xvals, xticks)
+    plt.ylabel("Mean GFP pixel intensity", fontdict={'size':20,'family':'calibri'})
+    plt.title(title, y=1.05,fontdict={'size':26,'weight':'bold','family':'calibri'})
+    
+    save_dir = pathlib.Path(save_dir)
+    save_path = save_dir / (title+" scatter.png")
+    plt.savefig(save_path.as_posix())
+
+    for i in range(0, len(values_array)):
+        plt.plot(xvals, values_array[i])
+    
+    plt.xticks(xvals, xticks)
+    plt.ylabel("Mean GFP pixel intensity", fontdict={'size':20,'family':'calibri'})
+    plt.title(title, y=1.05,fontdict={'size':26,'weight':'bold','family':'calibri'})
+    
+    save_path = save_dir / (title+" line plot.png")
+    plt.savefig(save_path.as_posix())
+    plt.close()
+
+def grab_mean_features(features, worms, min_age=-np.inf, max_age=np.inf):
+    """Get the mean values for each worm for a list of features
+
+    Parameters:
+        features: list of features you want to grab out of the worm
+        worms: Worms list
+        save_dir: path to where you want to save the files
+        min_age, max_age: beginning and end values to search the features for
+    
+    Returns:
+        measurement_means: dictionary mapping the name of the feature to a list of a mean value for that feature
+         for each worm
+
+    """
+    measurement_means={}
+    for f in features:
+        measurements = np.array(worms.get_time_range(f, min_age=min_age, max_age=max_age, match_closest=True))
+        mean_list = measurements.mean(axis=1).T[1]
+        measurement_means[f] = mean_list
+    return measurement_means
+
 
 def run_stats(x_list,y_list):
     """Get the pearson, spearman, and polyfit coorelations from

@@ -23,7 +23,7 @@ def warp_image(spine_tck, width_tck, image_file, warp_file):
 
     #730 was determined for the number of image samples to take perpendicular to the spine
     #from average length of a worm (as determined from previous tests)
-    warped = resample.warp_image_to_standard_width(image, spine_tck, width_tck, width_tck, 730)
+    warped = resample.warp_image_to_standard_width(image, spine_tck, width_tck, width_tck, int(tck[0][-1]//5))
     #warped = resample.sample_image_along_spline(image, spine_tck, 730)
     mask = resample.make_mask_for_sampled_spline(warped.shape[0], warped.shape[1], width_tck)
     warped = colorize.scale(warped).astype('uint8')
