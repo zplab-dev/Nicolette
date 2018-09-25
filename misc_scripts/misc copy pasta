@@ -1,0 +1,11 @@
+########################## Copying things from one place to another #############################################
+import shutil
+import pathlib
+exp_dir = pathlib.Path('/mnt/lugia_array/20170919_lin-04_GFP_spe-9')
+for position_root in sorted(p.parent for p in exp_dir.glob('*/position_metadata.json')):
+    position_name = position_root.name
+    to_path = position_root/'great_lawn'
+    for image_path in sorted(position_root.glob('*great_lawn.png')):
+            if not to_path.exists():
+                to_path.mkdir()
+            shutil.move(str(image_path), str(to_path))
